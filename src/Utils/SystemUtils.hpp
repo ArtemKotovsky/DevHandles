@@ -5,9 +5,7 @@
 
 namespace utils
 {
-    void EnablePrivilege(const std::wstring& name);
+    void EnablePrivilege(const wchar_t* name);
     std::wstring GetProcessName(HANDLE processHandle);
-
-    std::wstring GetCurrentTime();
-    std::wstring SystemFileTimeToLocalTimeString(uint64_t systemFileTime);
+    std::wstring GetTime(const wchar_t* format);
 }

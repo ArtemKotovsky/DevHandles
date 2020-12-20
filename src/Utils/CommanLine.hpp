@@ -1,9 +1,10 @@
 #pragma once
 
+#include "Exceptions.hpp"
+
 #include <vector>
 #include <string>
 #include <sstream>
-#include "Exceptions.hpp"
 
 namespace utils
 {
@@ -35,23 +36,23 @@ namespace utils
 
         static bool TryParseArg(const std::wstring& argName, const std::wstring& argValue, std::wstring& arg)
         {
-            const auto res = argValue.find(argName);
-            if (0 != res)
+            if (0 != argValue.find(argName))
             {
                 return false;
             }
-            arg.assign(argValue.begin() + res + argName.size(), argValue.end());
+
+            arg.assign(argValue.begin() + argName.size(), argValue.end());
             return true;
         }
 
-        static std::vector<std::wstring> Split(const std::wstring& value, wchar_t splitter)
+        static std::vector<std::wstring> Split(const std::wstring& value, wchar_t splitter, bool includeEmpty)
         {
             std::vector<std::wstring> res;
             std::wstringstream wss(value);
             std::wstring item;
             while (std::getline(wss, item, splitter))
             {
-                if (!item.empty())
+                if (!item.empty() || includeEmpty)
                 {
                     res.push_back(item);
                 }
@@ -59,7 +60,7 @@ namespace utils
             return res;
         }
 
-        static bool HasHelp(int argc, wchar_t** argv)
+        static bool HasHelpArg(int argc, wchar_t** argv)
         {
             for (int i = 0; i < argc; ++i)
             {
@@ -78,9 +79,9 @@ namespace utils
             return false;
         }
 
-        static bool NeedsHelping(int argc, wchar_t** argv)
+        static bool PrintHelp(int argc, wchar_t** argv)
         {
-            if (HasHelp(argc, argv))
+            if (HasHelpArg(argc, argv))
             {
                 Class::Help();
                 return true;

@@ -17,16 +17,16 @@ namespace
         {
             std::wstring value;
 
-            for (int i = 0; i < argc; ++i)
+            for (int i = 1; i < argc; ++i)
             {
                 if (TryParseArg(L"--filter=", argv[i], value))
                 {
-                    Filters = Split(value, L';');
+                    Filters = Split(value, L';', false);
                 }
                 else if (TryParseArg(L"--verbose", argv[i], value)
                       || TryParseArg(L"-v", argv[i], value))
                 {
-                    logger::sLogErrors = true;
+                    logger::LogErrors = true;
                 }
                 else if (TryParseArg(L"--timeout=", argv[i], value))
                 {
@@ -35,18 +35,24 @@ namespace
                         THROW("Invalid timeout value");
                     }
                 }
+                else
+                {
+                    LOG("Unknown option '" << argv[i] << "'");
+                    THROW("Unknown option");
+                }
             }
         }
 
         static void Help()
         {
-            LOG("Usage:\n");
+            LOG("Usage:");
             LOG("   --filter=[wildcard-mask-list] - use *? filers with ; splitter");
-            LOG("   --timeout=[seconds] - enabels monitoring by timeout");
+            LOG("   --timeout=[seconds] - enables monitoring by timeout");
             LOG("   --verbose,-v - extra logging");
-            LOG("\n\nExamples:");
+            LOG("\nExamples:");
             LOG("   --filter=*VID_8086*;explorer.exe;File;*device* --timeout=10 --verbose");
             LOG("   --filter=*USB* --timeout=10");
+            LOG("   --filter=\\Device\\Mup\\* --timeout=10");
         }
 
         std::vector<std::wstring> Filters;
@@ -73,7 +79,7 @@ namespace
         const std::vector<std::wstring>& filters,
         bool showTime)
     {
-        std::wstring time = showTime ? utils::GetCurrentTime() : L"";
+        std::wstring time = showTime ? utils::GetTime(L"%H:%M:%S") : L"";
 
         for (auto h : handles)
         {
@@ -89,7 +95,7 @@ int wmain(int argc, wchar_t ** argv)
 {
     try
     {
-        if (CL::NeedsHelping(argc, argv))
+        if (CL::PrintHelp(argc, argv))
         {
             return 0;
         }

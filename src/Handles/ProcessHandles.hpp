@@ -1,8 +1,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <functional>
-#include <unordered_map>
 
 namespace hndl
 {
@@ -26,8 +26,8 @@ namespace hndl
 
     public:
         void Refresh();
-        std::vector<ProcessHandleInfo> Update();
 
+        std::vector<ProcessHandleInfo> Update();
         const std::vector<ProcessHandleInfo>& GetHandles();
 
         void SetErrorCallback(ErrorCallback callback);
