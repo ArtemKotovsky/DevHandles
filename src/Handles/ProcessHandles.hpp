@@ -35,6 +35,7 @@ namespace hndl
     private:
         void CallErrorCallback(std::wstring message, uint32_t win32Error);
         void Refresh(std::vector<ProcessHandleInfo>& handles);
+        void RefreshDeviceName(std::vector<ProcessHandleInfo>& handles) const;
 
     private:
         ErrorCallback m_errorCallback;

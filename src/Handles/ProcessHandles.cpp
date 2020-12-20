@@ -1,5 +1,6 @@
 #include "ProcessHandles.hpp"
 #include "SystemHandles.hpp"
+#include "DeviceSymlinks.hpp"
 #include "SystemUtils.hpp"
 #include "ScopedHandle.hpp"
 #include "Exceptions.hpp"
@@ -152,6 +153,19 @@ namespace hndl
             handleInfo.ObjectName = system.GetObjectName(dupObjHandle, handle.GrantedAccess);
 
             outHandles.push_back(handleInfo);
+        }
+
+        RefreshDeviceName(outHandles);
+    }
+
+    void ProcessHandles::RefreshDeviceName(std::vector<ProcessHandleInfo>& handles) const
+    {
+        DeviceSymlinks symlinks;
+        symlinks.Refresh();
+
+        for (auto handle : handles)
+        {
+            handle.DeviceName = symlinks.TryGetSymlinkByDevice(handle.ObjectName);
         }
     }
 

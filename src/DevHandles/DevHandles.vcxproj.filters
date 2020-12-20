@@ -27,6 +27,12 @@
     <ClCompile Include="..\Handles\ProcessHandles.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\Handles\DeviceSymlinks.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Handles\SystemDirectoryEnum.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Utils\Exceptions.hpp">
@@ -51,6 +57,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Utils\CommanLine.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Handles\DeviceSymlinks.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Handles\SystemDirectoryEnum.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

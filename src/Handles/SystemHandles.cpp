@@ -124,6 +124,6 @@ namespace hndl
 
     std::wstring SystemHandles::UsToString(const UNICODE_STRING& str) const
     {
-        return std::wstring(&str.Buffer[0], &str.Buffer[str.Length / 2]);
+        return std::wstring(&str.Buffer[0], &str.Buffer[str.Length / sizeof(str.Buffer[0])]);
     }
 }

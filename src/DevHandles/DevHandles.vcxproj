@@ -155,13 +155,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\Handles\DeviceSymlinks.cpp" />
     <ClCompile Include="..\Handles\ProcessHandles.cpp" />
+    <ClCompile Include="..\Handles\SystemDirectoryEnum.cpp" />
     <ClCompile Include="..\Handles\SystemHandles.cpp" />
     <ClCompile Include="..\Utils\SystemUtils.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Handles\DeviceSymlinks.hpp" />
     <ClInclude Include="..\Handles\ProcessHandles.hpp" />
+    <ClInclude Include="..\Handles\SystemDirectoryEnum.hpp" />
     <ClInclude Include="..\Handles\SystemHandles.hpp" />
     <ClInclude Include="..\Utils\CommanLine.hpp" />
     <ClInclude Include="..\Utils\Exceptions.hpp" />
