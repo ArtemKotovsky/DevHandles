@@ -4,10 +4,10 @@ Enumerates system processes handles similar as the Process Exporer -> "Find Hand
 ### Features
 
 #### Wildcard mask filtering by 
-###### Process name 
-###### Handle object type
-###### Handle object name
-###### Device name
+    * Process name 
+    * Handle object type
+    * Handle object name
+    * Device name
     
 Currently supports a list of filters separated by ';' - it means OR.
     
