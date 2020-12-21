@@ -9,8 +9,10 @@ namespace hndl
     struct ProcessHandleInfo
     {
         size_t ObjectId = 0;
+        int64_t CreationTime = 0;
+        int64_t HandleRefCount = -1;
+        uint32_t HandleValue = 0;
         uint32_t OwnerProcessId = 0;
-        uint32_t HandleRefCount = 0;
         std::wstring ObjectName;
         std::wstring ObjectType;
         std::wstring DeviceName;

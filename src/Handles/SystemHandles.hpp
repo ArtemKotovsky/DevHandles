@@ -1,27 +1,20 @@
 #pragma once
 
-#include <vector>
-#include <optional>
-#include <string>
-#include "Ntdll.h"
-
-#pragma comment(lib, "ntdll.lib")
+#include "SystemHandleImpl.hpp"
 
 namespace hndl
 {
-    class SystemHandles
+    class SystemHandles : public SystemHandleImpl
     {
     public:
-        std::vector<SYSTEM_HANDLE_TABLE_ENTRY_INFO> GetSystemHandles();
-        std::optional<OBJECT_BASIC_INFORMATION> GetBasicInformation(HANDLE handle);
-        std::wstring GetTypeName(HANDLE handle);
-        std::wstring GetObjectName(HANDLE handle, ULONG grantedAccess);
+        SystemHandles() = default;
 
     private:
-        NTSTATUS QueryObject(HANDLE handle, OBJECT_INFORMATION_CLASS objectInformationClass);
-        std::wstring UsToString(const UNICODE_STRING& str) const;
-
-    private:
-        std::vector<char> m_bufferCache;
+        virtual NTSTATUS QueryObjectFn(
+            _In_ HANDLE handle,
+            _In_ OBJECT_INFORMATION_CLASS objectInformationClass,
+            _Out_opt_ PVOID objectInformation,
+            _In_ ULONG objectInformationLength,
+            _Out_opt_ PULONG returnLength) override;
     };
 }

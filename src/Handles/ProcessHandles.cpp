@@ -1,11 +1,13 @@
 #include "ProcessHandles.hpp"
 #include "SystemHandles.hpp"
+#include "RemoteSystemHandles.hpp"
 #include "DeviceSymlinks.hpp"
 #include "SystemUtils.hpp"
 #include "ScopedHandle.hpp"
 #include "Exceptions.hpp"
 
 #include <unordered_set>
+#include <iomanip>
 #include <Windows.h>
 #include <shlwapi.h>
 
@@ -25,6 +27,20 @@ namespace hndl
         out << std::dec;
         out << h.ProcessName << " (" << h.OwnerProcessId << ") ";
         out << "[Ref=" << h.HandleRefCount << "] ";
+        out << "[Handle=" << std::hex << h.HandleValue << "] ";
+        if (h.CreationTime)
+        {
+            SYSTEMTIME localTime = utils::SystemFileTimeToLocalTime(h.CreationTime);
+
+            out << "[Time=";
+            out << std::dec << std::setw(2) << std::setfill(L'0') << localTime.wHour << ":";
+            out << std::dec << std::setw(2) << std::setfill(L'0') << localTime.wMinute << ":";
+            out << std::dec << std::setw(2) << std::setfill(L'0') << localTime.wSecond << " ";
+            out << std::dec << std::setw(2) << std::setfill(L'0') << localTime.wDay << "-";
+            out << std::dec << std::setw(2) << std::setfill(L'0') << localTime.wMonth << "-";
+            out << std::dec << std::setw(4) << std::setfill(L'0') << localTime.wYear;
+            out << "] ";
+        }
         out << h.ObjectType << " " << h.ObjectName << " " << h.DeviceName;
         return out;
     }
@@ -98,6 +114,7 @@ namespace hndl
         std::unordered_map<DWORD, Handle> procCache;
         std::unordered_map<DWORD, std::wstring> procNameCache;
         std::unordered_set<DWORD> filteredProcessCache;
+        std::unordered_map<DWORD, RemoteSystemHandles> remoteProcCache;
 
         SystemHandles system;
         auto handles = system.GetSystemHandles();
@@ -148,6 +165,12 @@ namespace hndl
                 continue;
             }
 
+            ProcessHandleInfo handleInfo;
+            handleInfo.ObjectId = reinterpret_cast<size_t>(handle.Object);
+            handleInfo.OwnerProcessId = handle.UniqueProcessId;
+            handleInfo.ProcessName = procNameCache[handle.UniqueProcessId];
+            handleInfo.HandleValue = handle.HandleValue;
+
             Handle dupObjHandle;
             if (!DuplicateHandle(processHandle->second,
                 reinterpret_cast<HANDLE>(handle.HandleValue),
@@ -157,25 +180,47 @@ namespace hndl
                 FALSE,
                 DUPLICATE_SAME_ACCESS))
             {
-                LOG_WIN_ERROR("Cannot duplicate process " << handle.UniqueProcessId << " handle");
-                continue;
+                auto remoteProc = remoteProcCache.find(handle.UniqueProcessId);
+
+                if (remoteProcCache.end() == remoteProc)
+                {
+                    remoteProc = remoteProcCache.insert({
+                        handle.UniqueProcessId,
+                        RemoteSystemHandles()
+                        }).first;
+
+                    remoteProc->second.AttachToProcess(
+                        handle.UniqueProcessId);
+                }
+
+                if (!remoteProc->second.IsAttached())
+                {
+                    LOG_WIN_ERROR("Cannot duplicate process " << handle.UniqueProcessId << " handle");
+                    continue;
+                }
+
+                const HANDLE objectHandle = reinterpret_cast<HANDLE>(handle.HandleValue);
+
+                handleInfo.ObjectType = remoteProc->second.GetTypeName(objectHandle);
+                handleInfo.ObjectName = remoteProc->second.GetObjectName(objectHandle, handle.GrantedAccess);
+
+                if (auto basicInfo = remoteProc->second.GetBasicInformation(objectHandle))
+                {
+                    handleInfo.HandleRefCount = basicInfo->HandleCount;
+                    handleInfo.CreationTime = basicInfo->CreationTime.QuadPart;
+                }
             }
-
-            auto basicInfo = system.GetBasicInformation(dupObjHandle);
-
-            if (!basicInfo)
+            else
             {
-                LOG_WIN_ERROR("Cannot get process " << handle.UniqueProcessId << " handle basic info");
-                continue;
-            }
+                handleInfo.ObjectType = system.GetTypeName(dupObjHandle);
+                handleInfo.ObjectName = system.GetObjectName(dupObjHandle, handle.GrantedAccess);
 
-            ProcessHandleInfo handleInfo;
-            handleInfo.ObjectId = reinterpret_cast<size_t>(handle.Object);
-            handleInfo.OwnerProcessId = handle.UniqueProcessId;
-            handleInfo.HandleRefCount = basicInfo->HandleCount - 1;
-            handleInfo.ProcessName = procNameCache[handle.UniqueProcessId];
-            handleInfo.ObjectType = system.GetTypeName(dupObjHandle);
-            handleInfo.ObjectName = system.GetObjectName(dupObjHandle, handle.GrantedAccess);
+                if (auto basicInfo = system.GetBasicInformation(dupObjHandle))
+                {
+                    handleInfo.HandleRefCount = basicInfo->HandleCount - 1;
+                    handleInfo.CreationTime = basicInfo->CreationTime.QuadPart;
+                }
+            }
 
             outHandles.push_back(handleInfo);
         }

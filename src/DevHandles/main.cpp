@@ -1,5 +1,5 @@
 #include <iomanip>
-#include <Windows.h>
+#include <windows.h>
 #include <shlwapi.h>
 
 #include "Log.hpp"

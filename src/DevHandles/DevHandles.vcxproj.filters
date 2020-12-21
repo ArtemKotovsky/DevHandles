@@ -39,6 +39,15 @@
     <ClCompile Include="..\Handles\DeviceSymlinks.cpp">
       <Filter>Handles</Filter>
     </ClCompile>
+    <ClCompile Include="..\Utils\ProcessMemory.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Handles\RemoteSystemHandles.cpp">
+      <Filter>Handles</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Handles\SystemHandleImpl.cpp">
+      <Filter>Handles</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Log.hpp">
@@ -69,6 +78,15 @@
       <Filter>Handles</Filter>
     </ClInclude>
     <ClInclude Include="..\Handles\DeviceSymlinks.hpp">
+      <Filter>Handles</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Utils\ProcessMemory.hpp">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Handles\RemoteSystemHandles.hpp">
+      <Filter>Handles</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Handles\SystemHandleImpl.hpp">
       <Filter>Handles</Filter>
     </ClInclude>
   </ItemGroup>

@@ -96,7 +96,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles;$(SolutionDir)3rdParty\asmjit\src</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
@@ -113,7 +113,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles;$(SolutionDir)3rdParty\asmjit\src</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
@@ -130,7 +130,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles;$(SolutionDir)3rdParty\asmjit\src</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
@@ -147,7 +147,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Utils;$(SolutionDir)Handles;$(SolutionDir)3rdParty\asmjit\src</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
@@ -161,19 +161,25 @@
   <ItemGroup>
     <ClCompile Include="..\Handles\DeviceSymlinks.cpp" />
     <ClCompile Include="..\Handles\ProcessHandles.cpp" />
+    <ClCompile Include="..\Handles\RemoteSystemHandles.cpp" />
     <ClCompile Include="..\Handles\SystemDirectoryEnum.cpp" />
+    <ClCompile Include="..\Handles\SystemHandleImpl.cpp" />
     <ClCompile Include="..\Handles\SystemHandles.cpp" />
+    <ClCompile Include="..\Utils\ProcessMemory.cpp" />
     <ClCompile Include="..\Utils\SystemUtils.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Handles\DeviceSymlinks.hpp" />
     <ClInclude Include="..\Handles\ProcessHandles.hpp" />
+    <ClInclude Include="..\Handles\RemoteSystemHandles.hpp" />
     <ClInclude Include="..\Handles\SystemDirectoryEnum.hpp" />
+    <ClInclude Include="..\Handles\SystemHandleImpl.hpp" />
     <ClInclude Include="..\Handles\SystemHandles.hpp" />
     <ClInclude Include="..\Utils\CommanLine.hpp" />
     <ClInclude Include="..\Utils\Exceptions.hpp" />
     <ClInclude Include="..\Utils\Ntdll.h" />
+    <ClInclude Include="..\Utils\ProcessMemory.hpp" />
     <ClInclude Include="..\Utils\ScopedHandle.hpp" />
     <ClInclude Include="..\Utils\SystemUtils.hpp" />
     <ClInclude Include="Log.hpp" />

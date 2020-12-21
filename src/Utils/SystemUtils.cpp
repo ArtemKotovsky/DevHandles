@@ -43,4 +43,21 @@ namespace utils
 
         return std::wstring();
     }
+
+    SYSTEMTIME SystemFileTimeToLocalTime(uint64_t systemFileTime)
+    {
+        LARGE_INTEGER li{};
+        li.QuadPart = systemFileTime;
+
+        FILETIME ftSystemTime{ 0 };
+        ftSystemTime.dwHighDateTime = li.HighPart;
+        ftSystemTime.dwLowDateTime = li.LowPart;
+
+        FILETIME ftLocalTime{ 0 };
+        SYSTEMTIME localTime{ 0 };
+        THROW_WIN_IF2(!FileTimeToLocalFileTime(&ftSystemTime, &ftLocalTime));
+        THROW_WIN_IF2(!FileTimeToSystemTime(&ftLocalTime, &localTime));
+
+        return localTime;
+    }
 }
