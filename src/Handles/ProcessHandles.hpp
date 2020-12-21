@@ -33,7 +33,8 @@ namespace hndl
         const std::vector<ProcessHandleInfo>& GetHandles();
 
         void SetErrorCallback(ErrorCallback callback);
-        void SetProcessFilter(const std::vector<std::wstring>& processFilter);
+        void SetIncludeProcessFilter(const std::vector<std::wstring>& processFilter);
+        void SetExcludeProcessFilter(const std::vector<std::wstring>& processFilter);
 
     private:
         void CallErrorCallback(std::wstring message, uint32_t win32Error);
@@ -44,6 +45,7 @@ namespace hndl
     private:
         ErrorCallback m_errorCallback;
         std::vector<ProcessHandleInfo> m_handles;
-        std::vector<std::wstring> m_processFilter;
+        std::vector<std::wstring> m_includeProcessFilter;
+        std::vector<std::wstring> m_excludeProcessFilter;
     };
 }

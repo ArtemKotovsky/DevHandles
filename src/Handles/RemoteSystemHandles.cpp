@@ -151,7 +151,7 @@ namespace hndl
             return GetLastError();
         }
 
-        DWORD status = WaitForSingleObject(hRemoteThread, 500000);
+        DWORD status = WaitForSingleObject(hRemoteThread, 1000);
 
         if (WAIT_OBJECT_0 != status)
         {

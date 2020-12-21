@@ -19,14 +19,19 @@ namespace utils
         THROW_WIN_IF2(!AdjustTokenPrivileges(hToken, FALSE, &priv, sizeof(priv), 0, 0));
     }
 
-    std::wstring GetProcessName(HANDLE processHandle)
+    std::wstring GetProcessFilename(HANDLE processHandle)
     {
         std::wstring name;
         name.resize(4096);
-        name.resize(GetProcessImageFileName(processHandle, 
-            name.data(), 
+        name.resize(GetProcessImageFileName(processHandle,
+            name.data(),
             static_cast<DWORD>(name.size())));
-        return std::filesystem::path(name).filename();
+        return name;
+    }
+
+    std::wstring GetProcessName(HANDLE processHandle)
+    {
+        return std::filesystem::path(GetProcessFilename(processHandle)).filename();
     }
 
     std::wstring GetTime(const wchar_t* format)
