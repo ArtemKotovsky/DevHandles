@@ -25,7 +25,11 @@ namespace
                 }
                 else if (TryParseArg(L"--process=", argv[i], value))
                 {
-                    Process = Split(value, L';', false);
+                    IncludeProcess = Split(value, L';', false);
+                }
+                else if (TryParseArg(L"--exclude-process=", argv[i], value))
+                {
+                    ExcludeProcess = Split(value, L';', false);
                 }
                 else if (TryParseArg(L"--verbose", argv[i], value)
                       || TryParseArg(L"-v", argv[i], value))
@@ -52,17 +56,19 @@ namespace
             LOG("Usage:");
             LOG("   --filter=[wildcard-mask-list] - objects filter, splitter is ';', default is *");
             LOG("   --process=[wildcard-mask-list] - process names, splitter is ';', default is *");
+            LOG("   --exclude-process=[wildcard-mask-list] - excluded process names, splitter is ';', default is None");
             LOG("   --timeout=[seconds] - enables monitoring by timeout");
             LOG("   --verbose,-v - extra logging");
             LOG("\nExamples:");
             LOG("   --filter=*VID_8086*;File;*device* --process=explorer.exe --timeout=10 --verbose");
             LOG("   --filter=*USB* --process=cmd.exe|explorer.exe --timeout=10");
-            LOG("   --filter=\\Device\\Mup\\* --timeout=10");
+            LOG("   --filter=\\Device\\Mup\\* --exclude-process=svchost.exe --timeout=10");
             LOG("   --process=explorer.exe");
             LOG("   --timeout=5");
         }
 
-        std::vector<std::wstring> Process;
+        std::vector<std::wstring> IncludeProcess;
+        std::vector<std::wstring> ExcludeProcess;
         std::vector<std::wstring> Filters;
         std::uint32_t Timeout = 0;
     };
@@ -115,11 +121,17 @@ int wmain(int argc, wchar_t ** argv)
 
         CL cl(argc, argv);
 
+        for (const auto& filter : cl.Filters)
+        {
+            LOG("Filter: " << filter);
+        }
+
         utils::EnablePrivilege(SE_DEBUG_NAME);
 
         hndl::ProcessHandles processHandles;
         processHandles.SetErrorCallback(ErrorCallback);
-        processHandles.SetProcessFilter(cl.Process);
+        processHandles.SetIncludeProcessFilter(cl.IncludeProcess);
+        processHandles.SetExcludeProcessFilter(cl.ExcludeProcess);
         processHandles.Refresh();
 
         auto handles = processHandles.GetHandles();

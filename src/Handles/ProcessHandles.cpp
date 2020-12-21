@@ -7,8 +7,10 @@
 #include "Exceptions.hpp"
 
 #include <unordered_set>
+#include <future>
+#include <list>
 #include <iomanip>
-#include <Windows.h>
+#include <windows.h>
 #include <shlwapi.h>
 
 #define LOG_WIN_ERROR(...) {                \
@@ -50,9 +52,14 @@ namespace hndl
         m_errorCallback = callback;
     }
 
-    void ProcessHandles::SetProcessFilter(const std::vector<std::wstring>& processFilter)
+    void ProcessHandles::SetIncludeProcessFilter(const std::vector<std::wstring>& processFilter)
     {
-        m_processFilter = processFilter;
+        m_includeProcessFilter = processFilter;
+    }
+
+    void ProcessHandles::SetExcludeProcessFilter(const std::vector<std::wstring>& processFilter)
+    {
+        m_excludeProcessFilter = processFilter;
     }
 
     void ProcessHandles::CallErrorCallback(std::wstring message, uint32_t win32Error)
@@ -114,7 +121,9 @@ namespace hndl
         std::unordered_map<DWORD, Handle> procCache;
         std::unordered_map<DWORD, std::wstring> procNameCache;
         std::unordered_set<DWORD> filteredProcessCache;
-        std::unordered_map<DWORD, RemoteSystemHandles> remoteProcCache;
+
+        std::mutex outHandlesLock;
+        std::list<std::future<void>> tasks;
 
         SystemHandles system;
         auto handles = system.GetSystemHandles();
@@ -180,35 +189,36 @@ namespace hndl
                 FALSE,
                 DUPLICATE_SAME_ACCESS))
             {
-                auto remoteProc = remoteProcCache.find(handle.UniqueProcessId);
-
-                if (remoteProcCache.end() == remoteProc)
+                auto task = std::async(std::launch::async, [&outHandles, &outHandlesLock, this](
+                    ProcessHandleInfo handleInfo, 
+                    SYSTEM_HANDLE_TABLE_ENTRY_INFO handle)
                 {
-                    remoteProc = remoteProcCache.insert({
-                        handle.UniqueProcessId,
-                        RemoteSystemHandles()
-                        }).first;
+                    RemoteSystemHandles remoteHandle;
 
-                    remoteProc->second.AttachToProcess(
-                        handle.UniqueProcessId);
-                }
+                    if (!remoteHandle.AttachToProcess(handle.UniqueProcessId))
+                    {
+                        LOG_WIN_ERROR("Cannot open process " << handle.UniqueProcessId);
+                        LOG_WIN_ERROR("Cannot duplicate process " << handle.UniqueProcessId << " handle");
+                        return;
+                    }
 
-                if (!remoteProc->second.IsAttached())
-                {
-                    LOG_WIN_ERROR("Cannot duplicate process " << handle.UniqueProcessId << " handle");
-                    continue;
-                }
+                    const HANDLE objectHandle = reinterpret_cast<HANDLE>(handle.HandleValue);
 
-                const HANDLE objectHandle = reinterpret_cast<HANDLE>(handle.HandleValue);
+                    handleInfo.ObjectType = remoteHandle.GetTypeName(objectHandle);
+                    handleInfo.ObjectName = remoteHandle.GetObjectName(objectHandle, handle.GrantedAccess);
 
-                handleInfo.ObjectType = remoteProc->second.GetTypeName(objectHandle);
-                handleInfo.ObjectName = remoteProc->second.GetObjectName(objectHandle, handle.GrantedAccess);
+                    if (auto basicInfo = remoteHandle.GetBasicInformation(objectHandle))
+                    {
+                        handleInfo.HandleRefCount = basicInfo->HandleCount;
+                        handleInfo.CreationTime = basicInfo->CreationTime.QuadPart;
+                    }
 
-                if (auto basicInfo = remoteProc->second.GetBasicInformation(objectHandle))
-                {
-                    handleInfo.HandleRefCount = basicInfo->HandleCount;
-                    handleInfo.CreationTime = basicInfo->CreationTime.QuadPart;
-                }
+                    std::lock_guard<std::mutex> lock(outHandlesLock);
+                    outHandles.push_back(handleInfo);
+
+                }, std::move(handleInfo), handle);
+                
+                tasks.insert(tasks.end(), std::move(task));
             }
             else
             {
@@ -220,9 +230,15 @@ namespace hndl
                     handleInfo.HandleRefCount = basicInfo->HandleCount - 1;
                     handleInfo.CreationTime = basicInfo->CreationTime.QuadPart;
                 }
-            }
 
-            outHandles.push_back(handleInfo);
+                std::lock_guard<std::mutex> lock(outHandlesLock);
+                outHandles.push_back(handleInfo);
+            }
+        }
+
+        for (auto& task : tasks)
+        {
+            task.wait();
         }
 
         RefreshDeviceName(outHandles);
@@ -241,7 +257,15 @@ namespace hndl
 
     bool ProcessHandles::IsFilteredProcessName(const std::wstring& processName) const
     {
-        for (const auto& mask : m_processFilter)
+        for (const auto& mask : m_excludeProcessFilter)
+        {
+            if (PathMatchSpecW(processName.c_str(), mask.c_str()))
+            {
+                return false;
+            }
+        }
+
+        for (const auto& mask : m_includeProcessFilter)
         {
             if (PathMatchSpecW(processName.c_str(), mask.c_str()))
             {
@@ -249,6 +273,6 @@ namespace hndl
             }
         }
 
-        return m_processFilter.empty();
+        return m_includeProcessFilter.empty();
     }
 }

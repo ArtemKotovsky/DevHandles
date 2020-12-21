@@ -46,13 +46,14 @@ DevHandles.exe --help
 Usage:
    --filter=[wildcard-mask-list] - objects filter, splitter is ';', default is *
    --process=[wildcard-mask-list] - process names, splitter is ';', default is *
+   --exclude-process=[wildcard-mask-list] - excluded process names, splitter is ';', default is None
    --timeout=[seconds] - enables monitoring by timeout
    --verbose,-v - extra logging
 
 Examples:
    --filter=*VID_8086*;File;*device* --process=explorer.exe --timeout=10 --verbose
    --filter=*USB* --process=cmd.exe|explorer.exe --timeout=10
-   --filter=\Device\Mup\* --timeout=10
+   --filter=\Device\Mup\* --exclude-process=svchost.exe --timeout=10
    --process=explorer.exe
    --timeout=5
 ```
