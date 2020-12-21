@@ -5,7 +5,11 @@
 
 #define ASMJIT_STATIC
 #define ASMJIT_EMBED
+#pragma warning(push, 0)
+#pragma warning(disable : 26495 26812 6011 26451 6387)
 #include <asmjit/asmjit.h>
+#pragma warning(pop)
+
 #define JIT(_code_) if (asmjit::kErrorOk != ##_code_) { THROW("Asm jit error at " << __LINE__)}
 
 namespace hndl
@@ -19,7 +23,7 @@ namespace hndl
         utils::ProcessMemory Data;
         utils::ProcessMemory Args;
         Handle Process;
-        uint64_t NtQueryObjectAddr;
+        uint64_t NtQueryObjectAddr = 0;
     };
 
     RemoteSystemHandles::RemoteSystemHandles()
