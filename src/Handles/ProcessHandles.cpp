@@ -249,7 +249,7 @@ namespace hndl
         DeviceSymlinks symlinks;
         symlinks.Refresh();
 
-        for (auto handle : handles)
+        for (auto& handle : handles)
         {
             handle.DeviceName = symlinks.TryGetSymlinkByDevice(handle.ObjectName);
         }

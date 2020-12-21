@@ -121,11 +121,6 @@ int wmain(int argc, wchar_t ** argv)
 
         CL cl(argc, argv);
 
-        for (const auto& filter : cl.Filters)
-        {
-            LOG("Filter: " << filter);
-        }
-
         utils::EnablePrivilege(SE_DEBUG_NAME);
 
         hndl::ProcessHandles processHandles;
