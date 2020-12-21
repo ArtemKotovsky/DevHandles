@@ -13,57 +13,63 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Utils">
+      <UniqueIdentifier>{ecce9001-f002-4a92-92f6-076595f89c21}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Handles">
+      <UniqueIdentifier>{d2a59d88-f46f-4e51-bb86-5596e2d889fc}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\Handles\SystemHandles.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\Utils\SystemUtils.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Utils</Filter>
     </ClCompile>
     <ClCompile Include="..\Handles\ProcessHandles.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Handles</Filter>
     </ClCompile>
-    <ClCompile Include="..\Handles\DeviceSymlinks.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\Handles\SystemHandles.cpp">
+      <Filter>Handles</Filter>
     </ClCompile>
     <ClCompile Include="..\Handles\SystemDirectoryEnum.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Handles</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Handles\DeviceSymlinks.cpp">
+      <Filter>Handles</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Utils\Exceptions.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Utils\Ntdll.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Utils\ScopedHandle.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Handles\SystemHandles.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Log.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Utils\SystemUtils.hpp">
-      <Filter>Header Files</Filter>
+      <Filter>Utils</Filter>
     </ClInclude>
-    <ClInclude Include="..\Handles\ProcessHandles.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\Utils\Ntdll.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Utils\Exceptions.hpp">
+      <Filter>Utils</Filter>
     </ClInclude>
     <ClInclude Include="..\Utils\CommanLine.hpp">
-      <Filter>Header Files</Filter>
+      <Filter>Utils</Filter>
     </ClInclude>
-    <ClInclude Include="..\Handles\DeviceSymlinks.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\Utils\ScopedHandle.hpp">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Handles\SystemHandles.hpp">
+      <Filter>Handles</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Handles\ProcessHandles.hpp">
+      <Filter>Handles</Filter>
     </ClInclude>
     <ClInclude Include="..\Handles\SystemDirectoryEnum.hpp">
-      <Filter>Header Files</Filter>
+      <Filter>Handles</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Handles\DeviceSymlinks.hpp">
+      <Filter>Handles</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
