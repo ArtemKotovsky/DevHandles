@@ -31,14 +31,17 @@ namespace hndl
         const std::vector<ProcessHandleInfo>& GetHandles();
 
         void SetErrorCallback(ErrorCallback callback);
+        void SetProcessFilter(const std::vector<std::wstring>& processFilter);
 
     private:
         void CallErrorCallback(std::wstring message, uint32_t win32Error);
         void Refresh(std::vector<ProcessHandleInfo>& handles);
         void RefreshDeviceName(std::vector<ProcessHandleInfo>& handles) const;
+        bool IsFilteredProcessName(const std::wstring& processName) const;
 
     private:
         ErrorCallback m_errorCallback;
         std::vector<ProcessHandleInfo> m_handles;
+        std::vector<std::wstring> m_processFilter;
     };
 }

@@ -7,6 +7,7 @@
 
 #include <unordered_set>
 #include <Windows.h>
+#include <shlwapi.h>
 
 #define LOG_WIN_ERROR(...) {                \
     DWORD $error = GetLastError();          \
@@ -33,6 +34,11 @@ namespace hndl
         m_errorCallback = callback;
     }
 
+    void ProcessHandles::SetProcessFilter(const std::vector<std::wstring>& processFilter)
+    {
+        m_processFilter = processFilter;
+    }
+
     void ProcessHandles::CallErrorCallback(std::wstring message, uint32_t win32Error)
     {
         if (m_errorCallback)
@@ -44,6 +50,11 @@ namespace hndl
     void ProcessHandles::Refresh()
     {
         Refresh(m_handles);
+    }
+
+    const std::vector<ProcessHandleInfo>& ProcessHandles::GetHandles()
+    {
+        return m_handles;
     }
 
     std::vector<ProcessHandleInfo> ProcessHandles::Update()
@@ -86,6 +97,7 @@ namespace hndl
     {
         std::unordered_map<DWORD, Handle> procCache;
         std::unordered_map<DWORD, std::wstring> procNameCache;
+        std::unordered_set<DWORD> filteredProcessCache;
 
         SystemHandles system;
         auto handles = system.GetSystemHandles();
@@ -108,7 +120,14 @@ namespace hndl
                 }
                 else
                 {
-                    procNameCache[handle.UniqueProcessId] = GetProcessName(process);
+                    std::wstring processName = GetProcessName(process);
+
+                    if (IsFilteredProcessName(processName))
+                    {
+                        filteredProcessCache.insert(handle.UniqueProcessId);
+                    }
+
+                    procNameCache.emplace(handle.UniqueProcessId, std::move(processName));
                 }
 
                 processHandle = procCache.insert({
@@ -120,6 +139,12 @@ namespace hndl
             if (!processHandle->second)
             {
                 // process handle was not opened
+                // the error has already been logged
+                continue;
+            }
+
+            if (filteredProcessCache.end() == filteredProcessCache.find(handle.UniqueProcessId))
+            {
                 continue;
             }
 
@@ -169,8 +194,16 @@ namespace hndl
         }
     }
 
-    const std::vector<ProcessHandleInfo>& ProcessHandles::GetHandles()
+    bool ProcessHandles::IsFilteredProcessName(const std::wstring& processName) const
     {
-        return m_handles;
+        for (const auto& mask : m_processFilter)
+        {
+            if (PathMatchSpecW(processName.c_str(), mask.c_str()))
+            {
+                return true;
+            }
+        }
+
+        return m_processFilter.empty();
     }
 }

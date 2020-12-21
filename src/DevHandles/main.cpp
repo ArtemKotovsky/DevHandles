@@ -23,6 +23,10 @@ namespace
                 {
                     Filters = Split(value, L';', false);
                 }
+                else if (TryParseArg(L"--process=", argv[i], value))
+                {
+                    Process = Split(value, L';', false);
+                }
                 else if (TryParseArg(L"--verbose", argv[i], value)
                       || TryParseArg(L"-v", argv[i], value))
                 {
@@ -46,15 +50,19 @@ namespace
         static void Help()
         {
             LOG("Usage:");
-            LOG("   --filter=[wildcard-mask-list] - use *? filers with ; splitter");
+            LOG("   --filter=[wildcard-mask-list] - objects filter, splitter is ';', default is *");
+            LOG("   --process=[wildcard-mask-list] - process names, splitter is ';', default is *");
             LOG("   --timeout=[seconds] - enables monitoring by timeout");
             LOG("   --verbose,-v - extra logging");
             LOG("\nExamples:");
-            LOG("   --filter=*VID_8086*;explorer.exe;File;*device* --timeout=10 --verbose");
-            LOG("   --filter=*USB* --timeout=10");
+            LOG("   --filter=*VID_8086*;File;*device* --process=explorer.exe --timeout=10 --verbose");
+            LOG("   --filter=*USB* --process=cmd.exe|explorer.exe --timeout=10");
             LOG("   --filter=\\Device\\Mup\\* --timeout=10");
+            LOG("   --process=explorer.exe");
+            LOG("   --timeout=5");
         }
 
+        std::vector<std::wstring> Process;
         std::vector<std::wstring> Filters;
         std::uint32_t Timeout = 0;
     };
@@ -89,6 +97,11 @@ namespace
             }
         }
     }
+
+    void ErrorCallback(std::wstring message, uint32_t win32Error)
+    {
+        LOG_WIN_ERROR(win32Error, message);
+    }
 }
 
 int wmain(int argc, wchar_t ** argv)
@@ -105,12 +118,8 @@ int wmain(int argc, wchar_t ** argv)
         utils::EnablePrivilege(SE_DEBUG_NAME);
 
         hndl::ProcessHandles processHandles;
-
-        processHandles.SetErrorCallback([](std::wstring message, uint32_t win32Error)
-        {
-            LOG_WIN_ERROR(win32Error, message);
-        });
-
+        processHandles.SetErrorCallback(ErrorCallback);
+        processHandles.SetProcessFilter(cl.Process);
         processHandles.Refresh();
 
         auto handles = processHandles.GetHandles();
