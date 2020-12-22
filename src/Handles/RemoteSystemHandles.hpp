@@ -13,8 +13,8 @@ namespace hndl
         RemoteSystemHandles(const RemoteSystemHandles&) = delete;
         RemoteSystemHandles& operator=(const RemoteSystemHandles&) = delete;
 
-        RemoteSystemHandles(RemoteSystemHandles&&);
-        RemoteSystemHandles& operator=(RemoteSystemHandles&&);
+        RemoteSystemHandles(RemoteSystemHandles&&) noexcept;
+        RemoteSystemHandles& operator=(RemoteSystemHandles&&) noexcept;
 
         bool AttachToProcess(uint32_t pid);
         bool IsAttached() const;

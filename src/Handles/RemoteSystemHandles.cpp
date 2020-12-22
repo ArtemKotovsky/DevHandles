@@ -6,7 +6,7 @@
 #define ASMJIT_STATIC
 #define ASMJIT_EMBED
 #pragma warning(push, 0)
-#pragma warning(disable : 26495 26812 6011 26451 6387)
+#pragma warning(disable : 6011 6387 26451 26495 26498 26812)
 #include <asmjit/asmjit.h>
 #pragma warning(pop)
 
@@ -29,13 +29,15 @@ namespace hndl
     RemoteSystemHandles::RemoteSystemHandles()
         : m_impl(std::make_unique<Impl>())
     {
-        m_impl->NtQueryObjectAddr = reinterpret_cast<uint64_t>(GetProcAddress(GetModuleHandle(L"ntdll"), "NtQueryObject"));
-        THROW_IF(!m_impl->NtQueryObjectAddr, "Cannot get NtQueryObject address");
+        HMODULE ntdll = GetModuleHandleW(L"ntdll");
+        THROW_WIN_IF(!ntdll, "Cannot get ntdll");
+        m_impl->NtQueryObjectAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "NtQueryObject"));
+        THROW_WIN_IF(!m_impl->NtQueryObjectAddr, "Cannot get NtQueryObject address");
     }
 
     RemoteSystemHandles::~RemoteSystemHandles() = default;
-    RemoteSystemHandles::RemoteSystemHandles(RemoteSystemHandles&&) = default;
-    RemoteSystemHandles& RemoteSystemHandles::operator=(RemoteSystemHandles&&) = default;
+    RemoteSystemHandles::RemoteSystemHandles(RemoteSystemHandles&&) noexcept = default;
+    RemoteSystemHandles& RemoteSystemHandles::operator=(RemoteSystemHandles&&) noexcept = default;
 
     bool RemoteSystemHandles::AttachToProcess(uint32_t pid)
     {
@@ -52,6 +54,7 @@ namespace hndl
         return !!m_impl->Process;
     }
 
+#pragma warning(suppress : 26812) // The enum type '_OBJECT_INFORMATION_CLASS' is unscoped. Prefer 'enum class' over 'enum' (Enum.3)
     NTSTATUS RemoteSystemHandles::RemoteQueryObject(HANDLE handle,
         OBJECT_INFORMATION_CLASS objectInformationClass,
         PVOID objectInformation,
@@ -129,10 +132,7 @@ namespace hndl
 
         if (0 != RunRemoteThread())
         {
-            m_impl->Code.release();
-            m_impl->Data.release();
-            m_impl->Args.release();
-            return STATUS_NO_MEMORY;
+            return STATUS_UNSUCCESSFUL;
         }
 
         if (!m_impl->Args.read2(&remoteReturnLength, sizeof(remoteReturnLength), 0) ||
@@ -148,28 +148,29 @@ namespace hndl
     DWORD RemoteSystemHandles::RunRemoteThread() const
     {
         LPTHREAD_START_ROUTINE func = reinterpret_cast<LPTHREAD_START_ROUTINE>(m_impl->Code.address());
-        Handle hRemoteThread = CreateRemoteThread(m_impl->Process, 0, 0, func, 0, 0, 0);
+        Handle remoteThread = CreateRemoteThread(m_impl->Process, 0, 0, func, 0, 0, 0);
 
-        if (!hRemoteThread)
+        if (!remoteThread)
         {
             return GetLastError();
         }
 
-        DWORD status = WaitForSingleObject(hRemoteThread, 1000);
+        DWORD status = WaitForSingleObject(remoteThread, 1000);
 
         if (WAIT_OBJECT_0 != status)
         {
-            if (!TerminateThread(hRemoteThread, 1))
+#pragma warning(suppress : 6258) // Using TerminateThread
+            if (!TerminateThread(remoteThread, 1))
             {
                 return GetLastError();
             }
 
-            return 1;
+            return ERROR_USER_APC;
         }
 
         DWORD exitCode = 0;
         
-        if (!GetExitCodeThread(hRemoteThread, &exitCode))
+        if (!GetExitCodeThread(remoteThread, &exitCode))
         {
             return GetLastError();
         }

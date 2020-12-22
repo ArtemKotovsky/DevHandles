@@ -79,8 +79,7 @@ namespace
         {
             if (PathMatchSpecW(handle.DeviceName.c_str(), mask.c_str()) ||
                 PathMatchSpecW(handle.ObjectName.c_str(), mask.c_str()) ||
-                PathMatchSpecW(handle.ObjectType.c_str(), mask.c_str()) ||
-                PathMatchSpecW(handle.ProcessName.c_str(), mask.c_str()))
+                PathMatchSpecW(handle.ObjectType.c_str(), mask.c_str()))
             {
                 return true;
             }
