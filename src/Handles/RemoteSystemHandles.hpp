@@ -31,6 +31,9 @@ namespace hndl
             ULONG objectInformationLength,
             PULONG returnLength) const;
         
+        NTSTATUS PrepareJitExceptionHandler(
+            ) const;
+
         NTSTATUS PrepareJitCode(ULONG64 handle,
             ULONG64 objectInformationClass,
             ULONG64 objectInformation,
