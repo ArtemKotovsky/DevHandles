@@ -30,6 +30,7 @@ namespace utils
         void release() noexcept;
 
         PVOID address() const noexcept;
+        PVOID address(SIZE_T offset) const noexcept;
         SIZE_T size() const noexcept;
         
         explicit operator bool() const noexcept;

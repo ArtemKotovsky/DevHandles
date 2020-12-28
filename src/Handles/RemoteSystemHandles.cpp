@@ -11,19 +11,41 @@
 #pragma warning(pop)
 
 #define JIT(_code_) if (asmjit::kErrorOk != ##_code_) { THROW("Asm jit error at " << __LINE__)}
+#define OFFS(_field_) offsetof(RemoteProcMemoory, _field_)
 
 namespace hndl
 {
     using Handle = utils::ScopedHandle<HANDLE, decltype(::CloseHandle), ::CloseHandle, nullptr>;
 
+    struct RemoteProcMemoory
+    {
+        // Code 3072 bytes
+        uint8_t CodeNtQueryObject[1024];
+        uint8_t CodeReserved[1024];
+        uint8_t CodeExceptionHandler[1024]; // the latest func in this struct
+
+        // Data 1024 bytes
+        uint64_t DataReturnLength;
+        uint64_t DataStatus;
+        RUNTIME_FUNCTION DataRuntimeFunc;
+        UNWIND_INFO DataUnwindInfo[1];
+        uint8_t DataAlignment[989];
+    };
+
+    static_assert(sizeof(RemoteProcMemoory) == 4096, "Error");
+    static_assert(offsetof(RemoteProcMemoory, DataRuntimeFunc) % sizeof(DWORD) == 0, "MSDN: error");
+    static_assert(offsetof(RemoteProcMemoory, DataUnwindInfo) % sizeof(DWORD) == 0, "MSDN: error");
+
     struct RemoteSystemHandles::Impl
     {
         std::vector<char> JitCode;
-        utils::ProcessMemory Code;
         utils::ProcessMemory Data;
-        utils::ProcessMemory Args;
+        utils::ProcessMemory Mem; // RemoteProcMemoory
         Handle Process;
         uint64_t NtQueryObjectAddr = 0;
+        uint64_t NtTerminateThreadAddr = 0;
+        uint64_t RtlAddFunctionTableAddr = 0;
+        uint64_t RtlDeleteFunctionTableAddr = 0;
     };
 
     RemoteSystemHandles::RemoteSystemHandles()
@@ -31,8 +53,18 @@ namespace hndl
     {
         HMODULE ntdll = GetModuleHandleW(L"ntdll");
         THROW_WIN_IF(!ntdll, "Cannot get ntdll");
+
         m_impl->NtQueryObjectAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "NtQueryObject"));
         THROW_WIN_IF(!m_impl->NtQueryObjectAddr, "Cannot get NtQueryObject address");
+
+        m_impl->NtTerminateThreadAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "NtTerminateThread"));
+        THROW_WIN_IF(!m_impl->NtTerminateThreadAddr, "Cannot get NtTerminateThread address");
+
+        m_impl->RtlAddFunctionTableAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "RtlAddFunctionTable"));
+        THROW_WIN_IF(!m_impl->RtlAddFunctionTableAddr, "Cannot get RtlAddFunctionTable address");
+
+        m_impl->RtlDeleteFunctionTableAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "RtlDeleteFunctionTable"));
+        THROW_WIN_IF(!m_impl->RtlDeleteFunctionTableAddr, "Cannot get RtlDeleteFunctionTable address");
     }
 
     RemoteSystemHandles::~RemoteSystemHandles() = default;
@@ -100,19 +132,20 @@ namespace hndl
         ULONG objectInformationLength,
         PULONG returnLength) const
     {
-        if (!m_impl->Args.realloc(m_impl->Process, 4096))
+        if (!m_impl->Mem.realloc(m_impl->Process, sizeof(RemoteProcMemoory)) ||
+            !m_impl->Mem.protect(PAGE_EXECUTE_READWRITE))
         {
             return STATUS_NO_MEMORY;
         }
 
-        const uint64_t remoteReturnLengthPtr = reinterpret_cast<uint64_t>(m_impl->Args.address());
-        const uint64_t remoteStatusPtr = remoteReturnLengthPtr + 8;
+        const uint64_t remoteReturnLengthPtr = reinterpret_cast<uint64_t>(m_impl->Mem.address(OFFS(DataReturnLength)));
+        const uint64_t remoteStatusPtr = reinterpret_cast<uint64_t>(m_impl->Mem.address(OFFS(DataStatus)));
 
         uint64_t remoteStatus = 0xffffffffffffffff;
         uint64_t remoteReturnLength = 0;
 
-        if (!m_impl->Args.write2(&remoteReturnLength, sizeof(remoteReturnLength), 0) ||
-            !m_impl->Args.write2(&remoteStatus, sizeof(remoteStatus), 8))
+        if (!m_impl->Mem.write2(&remoteReturnLength, sizeof(remoteReturnLength), OFFS(DataReturnLength)) ||
+            !m_impl->Mem.write2(&remoteStatus, sizeof(remoteStatus), OFFS(DataStatus)))
         {
             return STATUS_NO_MEMORY;
         }
@@ -135,8 +168,8 @@ namespace hndl
             return STATUS_UNSUCCESSFUL;
         }
 
-        if (!m_impl->Args.read2(&remoteReturnLength, sizeof(remoteReturnLength), 0) ||
-            !m_impl->Args.read2(&remoteStatus, sizeof(remoteStatus), 8))
+        if (!m_impl->Mem.read2(&remoteReturnLength, sizeof(remoteReturnLength), OFFS(DataReturnLength)) ||
+            !m_impl->Mem.read2(&remoteStatus, sizeof(remoteStatus), OFFS(DataStatus)))
         {
             return STATUS_NO_MEMORY;
         }
@@ -147,7 +180,7 @@ namespace hndl
 
     DWORD RemoteSystemHandles::RunRemoteThread() const
     {
-        LPTHREAD_START_ROUTINE func = reinterpret_cast<LPTHREAD_START_ROUTINE>(m_impl->Code.address());
+        LPTHREAD_START_ROUTINE func = reinterpret_cast<LPTHREAD_START_ROUTINE>(m_impl->Mem.address(OFFS(CodeNtQueryObject)));
         Handle remoteThread = CreateRemoteThread(m_impl->Process, 0, 0, func, 0, 0, 0);
 
         if (!remoteThread)
@@ -155,7 +188,7 @@ namespace hndl
             return GetLastError();
         }
 
-        DWORD status = WaitForSingleObject(remoteThread, 1000);
+        DWORD status = WaitForSingleObject(remoteThread, 10000);
 
         if (WAIT_OBJECT_0 != status)
         {
@@ -178,6 +211,80 @@ namespace hndl
         return exitCode;
     }
 
+    NTSTATUS RemoteSystemHandles::PrepareJitExceptionHandler() const
+    {
+        //
+        // Jit Exception Handler function
+        //
+        asmjit::JitRuntime runtime;
+        asmjit::CodeHolder code;
+        JIT(code.init(runtime.environment()));
+
+        asmjit::x86::Assembler a(&code);
+        // JIT(a.int3()); // Breakpoint
+
+        JIT(a.mov(asmjit::x86::rcx, -2)); // ThreadHandle, GetCurrentThread()
+        JIT(a.mov(asmjit::x86::rdx, -1));  // ExitStatus, non zero
+        JIT(a.mov(asmjit::x86::rax, m_impl->NtTerminateThreadAddr)); // func addr
+        JIT(a.call(asmjit::x86::rax)); // call the func, it never returns
+
+        //
+        // Prepare remote memory for the jit
+        //
+        m_impl->JitCode.resize(code.codeSize());
+
+        if (sizeof(RemoteProcMemoory::CodeExceptionHandler) < code.codeSize())
+        {
+            return STATUS_NO_MEMORY;
+        }
+
+        JIT(code.relocateToBase(reinterpret_cast<UINT64>(m_impl->Mem.address(OFFS(CodeExceptionHandler)))));
+
+        //
+        // Copy the jit code
+        //
+        THROW_IF(1 != code.sectionCount(), "Jit: more that one section (EH)!");
+        JIT(code.copySectionData(m_impl->JitCode.data(), m_impl->JitCode.size(), 0));
+
+        if (!m_impl->Mem.write2(m_impl->JitCode.data(), m_impl->JitCode.size(), OFFS(CodeExceptionHandler)))
+        {
+            return STATUS_NO_MEMORY;
+        }
+
+        //
+        // Fill the EH structures
+        //
+        const ULONG64 base = reinterpret_cast<ULONG64>(m_impl->Mem.address());
+        const ULONG64 firstFunc = reinterpret_cast<ULONG64>(m_impl->Mem.address(OFFS(CodeNtQueryObject)));
+        const ULONG64 handler = reinterpret_cast<ULONG64>(m_impl->Mem.address(OFFS(CodeExceptionHandler)));
+        const ULONG64 dataUnwindInfo = reinterpret_cast<ULONG64>(m_impl->Mem.address(OFFS(DataUnwindInfo)));
+
+        UNWIND_INFO unwindInfo{};
+        unwindInfo.Version = 1;
+        unwindInfo.Flags = UNW_FLAG_EHANDLER;
+        unwindInfo.SizeOfProlog = 0;
+        unwindInfo.CountOfCodes = 0;
+        unwindInfo.FrameRegister = 0;
+        unwindInfo.FrameOffset = 0;
+        unwindInfo.UnwindCode[0].FrameOffset = static_cast<USHORT>(handler - base);
+
+        RUNTIME_FUNCTION runtimeFunc{};
+        runtimeFunc.BeginAddress = static_cast<ULONG>(firstFunc - base); // any exception from the beginning of the memory
+        runtimeFunc.EndAddress = static_cast<ULONG>(handler - base); // up to the excextion handler
+        runtimeFunc.UnwindInfoAddress = static_cast<ULONG>(dataUnwindInfo - base); // RVA of unwind info
+
+        //
+        // Write the EH structures
+        //
+        if (!m_impl->Mem.write2(&runtimeFunc, sizeof(runtimeFunc), OFFS(DataRuntimeFunc)) ||
+            !m_impl->Mem.write2(&unwindInfo, sizeof(unwindInfo), OFFS(DataUnwindInfo)))
+        {
+            return STATUS_NO_MEMORY;
+        }
+
+        return STATUS_SUCCESS;
+    }
+
     NTSTATUS RemoteSystemHandles::PrepareJitCode(
         ULONG64 handle,
         ULONG64 objectInformationClass,
@@ -191,6 +298,13 @@ namespace hndl
         if (!IsWow64Process(m_impl->Process, &wow64))
         {
             return STATUS_UNSUCCESSFUL;
+        }
+
+        NTSTATUS status = PrepareJitExceptionHandler();
+
+        if (NT_ERROR(status))
+        {
+            return status;
         }
 
         if (wow64)
@@ -231,6 +345,17 @@ namespace hndl
         // JIT(a.int3());
 
         //
+        // Add exception handler
+        //
+        JIT(a.sub(asmjit::x86::rsp, 0x20));
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
+        JIT(a.mov(asmjit::x86::rdx, 1));                                          // EntryCount
+        JIT(a.mov(asmjit::x86::r8, m_impl->Mem.address()));                       // BaseAddress
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlAddFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlAddFunctionTable
+        JIT(a.add(asmjit::x86::rsp, 0x20));
+
+        //
         // NtQueryObject args, Windows fastcall64 
         //
         JIT(a.mov(asmjit::x86::rcx, handle));
@@ -263,6 +388,15 @@ namespace hndl
         JIT(a.add(asmjit::x86::rsp, 0x28));
 
         //
+        // Remove exception handler
+        //
+        JIT(a.sub(asmjit::x86::rsp, 0x20));
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlDeleteFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlDeleteFunctionTable
+        JIT(a.add(asmjit::x86::rsp, 0x20));
+
+        //
         // Return from the thread function, 
         // status=0 - everything is ok
         //
@@ -274,13 +408,12 @@ namespace hndl
         //
         m_impl->JitCode.resize(code.codeSize());
 
-        if (!m_impl->Code.realloc(m_impl->Process, code.codeSize()) || 
-            !m_impl->Code.protect(PAGE_READWRITE))
+        if (sizeof(RemoteProcMemoory::CodeNtQueryObject) < code.codeSize())
         {
             return STATUS_NO_MEMORY;
         }
 
-        JIT(code.relocateToBase(reinterpret_cast<UINT64>(m_impl->Code.address())));
+        JIT(code.relocateToBase(reinterpret_cast<UINT64>(m_impl->Mem.address(OFFS(CodeNtQueryObject)))));
 
         //
         // Copy jit code
@@ -288,8 +421,7 @@ namespace hndl
         THROW_IF(1 != code.sectionCount(), "Jit: more that one section!");
         JIT(code.copySectionData(m_impl->JitCode.data(), m_impl->JitCode.size(), 0));
 
-        if (!m_impl->Code.write2(m_impl->JitCode.data(), m_impl->JitCode.size(), 0) ||
-            !m_impl->Code.protect(PAGE_EXECUTE_READ))
+        if (!m_impl->Mem.write2(m_impl->JitCode.data(), m_impl->JitCode.size(), OFFS(CodeNtQueryObject)))
         {
             return STATUS_NO_MEMORY;
         }
@@ -351,6 +483,17 @@ namespace hndl
         //
         // x64 code, run the function and switch it back
         //
+        // Add exception handler
+        //
+        JIT(a.sub(asmjit::x86::rsp, 0x20));
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
+        JIT(a.mov(asmjit::x86::rdx, 1));                                          // EntryCount
+        JIT(a.mov(asmjit::x86::r8, m_impl->Mem.address()));                       // BaseAddress
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlAddFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlAddFunctionTable
+        JIT(a.add(asmjit::x86::rsp, 0x20));
+
+        //
         // NtQueryObject args, Windows fastcall64 
         //
         JIT(a.mov(asmjit::x86::rcx, handle));
@@ -381,6 +524,15 @@ namespace hndl
         // Stack alignment: cleanup
         //
         JIT(a.add(asmjit::x86::rsp, 0x28));
+
+        //
+        // Remove exception handler
+        //
+        JIT(a.sub(asmjit::x86::rsp, 0x20));
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlDeleteFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlDeleteFunctionTable
+        JIT(a.add(asmjit::x86::rsp, 0x20));
 
         //
         // x64bit switch back to x86
@@ -426,13 +578,12 @@ namespace hndl
         //
         m_impl->JitCode.resize(code.codeSize());
 
-        if (!m_impl->Code.realloc(m_impl->Process, code.codeSize()) ||
-            !m_impl->Code.protect(PAGE_READWRITE))
+        if (sizeof(RemoteProcMemoory::CodeNtQueryObject) < code.codeSize())
         {
             return STATUS_NO_MEMORY;
         }
 
-        JIT(code.relocateToBase(reinterpret_cast<UINT64>(m_impl->Code.address())));
+        JIT(code.relocateToBase(reinterpret_cast<UINT64>(m_impl->Mem.address(OFFS(CodeNtQueryObject)))));
 
         //
         // Copy jit code
@@ -440,8 +591,7 @@ namespace hndl
         THROW_IF(1 != code.sectionCount(), "Jit: more that one section!");
         JIT(code.copySectionData(m_impl->JitCode.data(), m_impl->JitCode.size(), 0));
 
-        if (!m_impl->Code.write2(m_impl->JitCode.data(), m_impl->JitCode.size(), 0) ||
-            !m_impl->Code.protect(PAGE_EXECUTE_READ))
+        if (!m_impl->Mem.write2(m_impl->JitCode.data(), m_impl->JitCode.size(), OFFS(CodeNtQueryObject)))
         {
             return STATUS_NO_MEMORY;
         }

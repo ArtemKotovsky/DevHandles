@@ -4,7 +4,7 @@
 #pragma once
 
 #pragma warning(push)
-#pragma warning(disable: 4005) // macro redefinition
+#pragma warning(disable: 4005 4201) // macro redefinition
 #pragma warning(disable: 28251 28252 28253) // Inconsistent annotation
 
 #ifdef __cplusplus
@@ -3840,6 +3840,28 @@ __pragma(clang diagnostic pop)
         ULONG NextEntryOffset;
         EFI_DRIVER_ENTRY DriverEntry;
     } EFI_DRIVER_ENTRY_LIST, * PEFI_DRIVER_ENTRY_LIST;
+
+    typedef union _UNWIND_CODE {
+        struct {
+            UINT8 CodeOffset;
+            UINT8 UnwindOp : 4;
+            UINT8 OpInfo : 4;
+        };
+        USHORT FrameOffset;
+    } UNWIND_CODE, *PUNWIND_CODE;
+
+    typedef struct _UNWIND_INFO {
+        UINT8 Version : 3;
+        UINT8 Flags : 5;
+        UINT8 SizeOfProlog;
+        UINT8 CountOfCodes;
+        UINT8 FrameRegister : 4;
+        UINT8 FrameOffset : 4;
+        UNWIND_CODE UnwindCode[1];
+        /*	UNWIND_CODE MoreUnwindCode[((CountOfCodes + 1) & ~1) - 1];
+         *	OPTIONAL ULONG ExceptionHandler;
+         *	OPTIONAL ULONG ExceptionData[]; */
+    } UNWIND_INFO, *PUNWIND_INFO;
 
     FORCEINLINE
         VOID

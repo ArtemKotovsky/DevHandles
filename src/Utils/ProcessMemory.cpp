@@ -130,6 +130,16 @@ namespace utils
         return m_memory;
     }
 
+    PVOID ProcessMemory::address(SIZE_T offset) const noexcept
+    {
+        if (0 == fixSizeByOffset(sizeof(char), offset))
+        {
+            return nullptr;
+        }
+
+        return static_cast<char*>(m_memory) + offset;
+    }
+
     SIZE_T ProcessMemory::size() const noexcept
     {
         return m_size;
