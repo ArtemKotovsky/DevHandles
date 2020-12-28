@@ -83,10 +83,7 @@ namespace hndl
     {
         // Query the object name
         // unless it has one of that access values on which NtQueryObject could hang
-        if (grantedAccess == 0x0012019f ||
-            grantedAccess == 0x001a019f ||
-            grantedAccess == 0x00120189 ||
-            grantedAccess == 0x00100000) 
+        if (grantedAccess & 0x00100000)
         {
             return std::wstring();
         }
