@@ -120,7 +120,10 @@ int wmain(int argc, wchar_t ** argv)
 
         CL cl(argc, argv);
 
+        std::wcout.imbue(std::locale(""));
         utils::EnablePrivilege(SE_DEBUG_NAME);
+
+        auto start = std::chrono::steady_clock::now();
 
         hndl::ProcessHandles processHandles;
         processHandles.SetErrorCallback(ErrorCallback);
@@ -128,7 +131,11 @@ int wmain(int argc, wchar_t ** argv)
         processHandles.SetExcludeProcessFilter(cl.ExcludeProcess);
         processHandles.Refresh();
 
+        auto end = std::chrono::steady_clock::now();
+        LOG("Time: " << std::dec << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << " seconds");
+
         auto handles = processHandles.GetHandles();
+        LOG("Handles: " << std::dec << handles.size());
         PrintHandles(handles, cl.Filters, 0 != cl.Timeout);
 
         while (0 != cl.Timeout)

@@ -26,9 +26,8 @@ namespace hndl
 
     std::wostream& operator<<(std::wostream& out, const ProcessHandleInfo& h)
     {
-        out << std::dec;
-        out << h.ProcessName << " (" << h.OwnerProcessId << ") ";
-        out << "[Ref=" << h.HandleRefCount << "] ";
+        out << h.ProcessName << " (" << std::dec << h.OwnerProcessId << ") ";
+        out << "[Ref=" << std::dec << h.HandleRefCount << "] ";
         out << "[Handle=" << std::hex << h.HandleValue << "] ";
         if (h.CreationTime)
         {
@@ -116,18 +115,19 @@ namespace hndl
         return newHandles;
     }
 
-    void ProcessHandles::Refresh(std::vector<ProcessHandleInfo>& outHandles)
+    void ProcessHandles::Refresh(std::vector<ProcessHandleInfo>& outHandles2)
     {
         std::unordered_map<DWORD, Handle> procCache;
         std::unordered_map<DWORD, std::wstring> procNameCache;
         std::unordered_set<DWORD> filteredProcessCache;
 
+        std::list<std::thread> threads;
         std::mutex outHandlesLock;
-        std::list<std::future<void>> tasks;
+        std::unordered_map<uint32_t, ProcessHandleInfo> outHandles;
+        uint32_t outHandleId = 0;
 
         SystemHandles system;
         auto handles = system.GetSystemHandles();
-        outHandles.clear();
 
         for (const auto& handle : handles)
         {
@@ -181,6 +181,8 @@ namespace hndl
             handleInfo.HandleValue = handle.HandleValue;
 
             Handle dupObjHandle;
+            const uint32_t id = ++outHandleId;
+
             if (!DuplicateHandle(processHandle->second,
                 reinterpret_cast<HANDLE>(handle.HandleValue),
                 GetCurrentProcess(),
@@ -190,22 +192,21 @@ namespace hndl
                 DUPLICATE_SAME_ACCESS))
             {
                 auto task = std::async(std::launch::async, [&outHandles, &outHandlesLock, this](
-                    ProcessHandleInfo handleInfo, 
-                    SYSTEM_HANDLE_TABLE_ENTRY_INFO handle)
+                    ProcessHandleInfo handleInfo,
+                    uint32_t handleId)
                 {
                     RemoteSystemHandles remoteHandle;
 
-                    if (!remoteHandle.AttachToProcess(handle.UniqueProcessId))
+                    if (!remoteHandle.AttachToProcess(handleInfo.OwnerProcessId))
                     {
-                        LOG_WIN_ERROR("Cannot open process " << handle.UniqueProcessId);
-                        LOG_WIN_ERROR("Cannot duplicate process " << handle.UniqueProcessId << " handle");
+                        LOG_WIN_ERROR("Cannot open process " << handleInfo.OwnerProcessId);
+                        LOG_WIN_ERROR("Cannot duplicate process " << handleInfo.OwnerProcessId << " handle");
                         return;
                     }
 
-                    const HANDLE objectHandle = reinterpret_cast<HANDLE>(handle.HandleValue);
+                    const HANDLE objectHandle = reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(handleInfo.HandleValue));
 
                     handleInfo.ObjectType = remoteHandle.GetTypeName(objectHandle);
-                    handleInfo.ObjectName = remoteHandle.GetObjectName(objectHandle, handle.GrantedAccess);
 
                     if (auto basicInfo = remoteHandle.GetBasicInformation(objectHandle))
                     {
@@ -213,18 +214,22 @@ namespace hndl
                         handleInfo.CreationTime = basicInfo->CreationTime.QuadPart;
                     }
 
-                    std::lock_guard<std::mutex> lock(outHandlesLock);
-                    outHandles.push_back(handleInfo);
+                    {
+                        std::lock_guard<std::mutex> lock(outHandlesLock);
+                        outHandles[handleId] = handleInfo;
+                    }
 
-                }, std::move(handleInfo), handle);
+                    std::wstring objectName = remoteHandle.GetObjectName(objectHandle);
+                    std::lock_guard<std::mutex> lock(outHandlesLock);
+                    outHandles[handleId].ObjectName.swap(objectName);
+
+                }, std::move(handleInfo), id);
                 
-                //tasks.insert(tasks.end(), std::move(task));
                 task.wait();
             }
             else
             {
                 handleInfo.ObjectType = system.GetTypeName(dupObjHandle);
-                handleInfo.ObjectName = system.GetObjectName(dupObjHandle, handle.GrantedAccess);
 
                 if (auto basicInfo = system.GetBasicInformation(dupObjHandle))
                 {
@@ -232,17 +237,73 @@ namespace hndl
                     handleInfo.CreationTime = basicInfo->CreationTime.QuadPart;
                 }
 
-                std::lock_guard<std::mutex> lock(outHandlesLock);
-                outHandles.push_back(handleInfo);
+                {
+                    std::lock_guard<std::mutex> lock(outHandlesLock);
+                    outHandles[id] = handleInfo;
+                }
+
+                if (handle.GrantedAccess == 0x0012019f ||
+                    handle.GrantedAccess == 0x001a019f ||
+                    handle.GrantedAccess == 0x00120189 || 
+                    handle.GrantedAccess == 0x00120089 ||
+                    handle.GrantedAccess == 0x00120116)
+                {
+                    auto task = std::thread([&outHandlesLock, &outHandles, this](
+                        Handle dupObjHandle,
+                        uint32_t id)
+                    {
+                        std::wstring objectName = SystemHandles().GetObjectName(dupObjHandle);
+                        std::lock_guard<std::mutex> lock(outHandlesLock);
+                        outHandles[id].ObjectName.swap(objectName);
+                
+                    }, std::move(dupObjHandle), id);
+
+                    threads.push_back(std::move(task));
+                }
+                else
+                {
+                    std::wstring objectName = SystemHandles().GetObjectName(dupObjHandle);
+                    std::lock_guard<std::mutex> lock(outHandlesLock);
+                    outHandles[id].ObjectName.swap(objectName);
+                }
             }
         }
 
-        for (auto& task : tasks)
+        if (!threads.empty())
         {
-            task.wait();
+            bool needWait = true;
+
+            for (auto& thread : threads)
+            {
+                if (needWait)
+                {
+                    if (WAIT_TIMEOUT == WaitForSingleObject(thread.native_handle(), 1000))
+                    {
+                        needWait = false;
+                        TerminateThread(thread.native_handle(), 1);
+                    }
+                }
+                else
+                {
+                    if (WAIT_OBJECT_0 != WaitForSingleObject(thread.native_handle(), 0))
+                    {
+                        TerminateThread(thread.native_handle(), 1);
+                    }
+                }
+
+                thread.join();
+            }
         }
 
-        RefreshDeviceName(outHandles);
+        outHandles2.clear();
+        outHandles2.reserve(outHandles.size());
+
+        for (auto& h : outHandles)
+        {
+            outHandles2.push_back(std::move(h.second));
+        }
+
+        RefreshDeviceName(outHandles2);
     }
 
     void ProcessHandles::RefreshDeviceName(std::vector<ProcessHandleInfo>& handles) const

@@ -20,7 +20,7 @@ namespace hndl
         std::vector<SYSTEM_HANDLE_TABLE_ENTRY_INFO> GetSystemHandles();
         std::optional<OBJECT_BASIC_INFORMATION> GetBasicInformation(HANDLE handle);
         std::wstring GetTypeName(HANDLE handle);
-        std::wstring GetObjectName(HANDLE handle, ULONG grantedAccess);
+        std::wstring GetObjectName(HANDLE handle);
 
     private:
         NTSTATUS QueryObject(HANDLE handle, OBJECT_INFORMATION_CLASS objectInformationClass);

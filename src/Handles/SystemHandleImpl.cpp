@@ -79,14 +79,9 @@ namespace hndl
         return UsToString(type->TypeName);
     }
 
-    std::wstring SystemHandleImpl::GetObjectName(HANDLE handle, ULONG grantedAccess)
+    std::wstring SystemHandleImpl::GetObjectName(HANDLE handle)
     {
-        // Query the object name
-        // unless it has one of that access values on which NtQueryObject could hang
-        if (grantedAccess & 0x00100000)
-        {
-            return std::wstring();
-        }
+        // NtQueryObject could hang
 
         NTSTATUS status = QueryObject(handle, ObjectNameInformation);
 
