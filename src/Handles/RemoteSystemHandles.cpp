@@ -17,6 +17,7 @@ namespace hndl
 {
     using Handle = utils::ScopedHandle<HANDLE, decltype(::CloseHandle), ::CloseHandle, nullptr>;
 
+#pragma pack(push, 1)
     struct RemoteProcMemoory
     {
         // Code 3072 bytes
@@ -27,14 +28,17 @@ namespace hndl
         // Data 1024 bytes
         uint64_t DataReturnLength;
         uint64_t DataStatus;
+        uint64_t DataDynamicTable;
+        uint64_t DataRsp;
         RUNTIME_FUNCTION DataRuntimeFunc;
         UNWIND_INFO DataUnwindInfo[1];
-        uint8_t DataAlignment[989];
+        uint8_t DataAlignment2[974];
     };
+#pragma pack(pop)
 
     static_assert(sizeof(RemoteProcMemoory) == 4096, "Error");
-    static_assert(offsetof(RemoteProcMemoory, DataRuntimeFunc) % sizeof(DWORD) == 0, "MSDN: error");
-    static_assert(offsetof(RemoteProcMemoory, DataUnwindInfo) % sizeof(DWORD) == 0, "MSDN: error");
+    static_assert(offsetof(RemoteProcMemoory, DataRuntimeFunc) % sizeof(DWORD32) == 0, "MSDN: error");
+    static_assert(offsetof(RemoteProcMemoory, DataUnwindInfo) % sizeof(DWORD32) == 0, "MSDN: error");
 
     struct RemoteSystemHandles::Impl
     {
@@ -44,8 +48,9 @@ namespace hndl
         Handle Process;
         uint64_t NtQueryObjectAddr = 0;
         uint64_t NtTerminateThreadAddr = 0;
-        uint64_t RtlAddFunctionTableAddr = 0;
-        uint64_t RtlDeleteFunctionTableAddr = 0;
+        uint64_t RtlAddGrowableFunctionTableAddr = 0;
+        uint64_t RtlDeleteGrowableFunctionTableAddr = 0;
+        RUNTIME_FUNCTION RemoteRuntimeFunc{};
     };
 
     RemoteSystemHandles::RemoteSystemHandles()
@@ -60,11 +65,11 @@ namespace hndl
         m_impl->NtTerminateThreadAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "NtTerminateThread"));
         THROW_WIN_IF(!m_impl->NtTerminateThreadAddr, "Cannot get NtTerminateThread address");
 
-        m_impl->RtlAddFunctionTableAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "RtlAddFunctionTable"));
-        THROW_WIN_IF(!m_impl->RtlAddFunctionTableAddr, "Cannot get RtlAddFunctionTable address");
+        m_impl->RtlAddGrowableFunctionTableAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "RtlAddGrowableFunctionTable"));
+        THROW_WIN_IF(!m_impl->RtlAddGrowableFunctionTableAddr, "Cannot get RtlAddGrowableFunctionTable address");
 
-        m_impl->RtlDeleteFunctionTableAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "RtlDeleteFunctionTable"));
-        THROW_WIN_IF(!m_impl->RtlDeleteFunctionTableAddr, "Cannot get RtlDeleteFunctionTable address");
+        m_impl->RtlDeleteGrowableFunctionTableAddr = reinterpret_cast<uint64_t>(GetProcAddress(ntdll, "RtlDeleteGrowableFunctionTable"));
+        THROW_WIN_IF(!m_impl->RtlDeleteGrowableFunctionTableAddr, "Cannot get RtlDeleteGrowableFunctionTable address");
     }
 
     RemoteSystemHandles::~RemoteSystemHandles() = default;
@@ -223,6 +228,19 @@ namespace hndl
         asmjit::x86::Assembler a(&code);
         // JIT(a.int3()); // Breakpoint
 
+        //
+        // Remove exception handler
+        //
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataDynamicTable))));
+        JIT(a.mov(asmjit::x86::rcx, asmjit::x86::qword_ptr(asmjit::x86::rcx))); // DynamicTable
+        JIT(a.sub(asmjit::x86::rsp, 0x20));
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlDeleteGrowableFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlDeleteGrowableFunctionTable
+        JIT(a.add(asmjit::x86::rsp, 0x20));
+
+        //
+        // Terminate thread
+        //
         JIT(a.mov(asmjit::x86::rcx, -2)); // ThreadHandle, GetCurrentThread()
         JIT(a.mov(asmjit::x86::rdx, -1));  // ExitStatus, non zero
         JIT(a.mov(asmjit::x86::rax, m_impl->NtTerminateThreadAddr)); // func addr
@@ -268,15 +286,14 @@ namespace hndl
         unwindInfo.FrameOffset = 0;
         unwindInfo.UnwindCode[0].FrameOffset = static_cast<USHORT>(handler - base);
 
-        RUNTIME_FUNCTION runtimeFunc{};
-        runtimeFunc.BeginAddress = static_cast<ULONG>(firstFunc - base); // any exception from the beginning of the memory
-        runtimeFunc.EndAddress = static_cast<ULONG>(handler - base); // up to the excextion handler
-        runtimeFunc.UnwindInfoAddress = static_cast<ULONG>(dataUnwindInfo - base); // RVA of unwind info
+        m_impl->RemoteRuntimeFunc.BeginAddress = static_cast<ULONG>(firstFunc - base); // any exception from the beginning of the memory
+        m_impl->RemoteRuntimeFunc.EndAddress = static_cast<ULONG>(handler - base); // up to the excextion handler
+        m_impl->RemoteRuntimeFunc.UnwindInfoAddress = static_cast<ULONG>(dataUnwindInfo - base); // RVA of unwind info
 
         //
         // Write the EH structures
         //
-        if (!m_impl->Mem.write2(&runtimeFunc, sizeof(runtimeFunc), OFFS(DataRuntimeFunc)) ||
+        if (!m_impl->Mem.write2(&m_impl->RemoteRuntimeFunc, sizeof(m_impl->RemoteRuntimeFunc), OFFS(DataRuntimeFunc)) ||
             !m_impl->Mem.write2(&unwindInfo, sizeof(unwindInfo), OFFS(DataUnwindInfo)))
         {
             return STATUS_NO_MEMORY;
@@ -347,13 +364,19 @@ namespace hndl
         //
         // Add exception handler
         //
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataDynamicTable))));  // DynamicTable
+        JIT(a.mov(asmjit::x86::rdx, m_impl->Mem.address(OFFS(DataRuntimeFunc))));   // FunctionTable
+        JIT(a.mov(asmjit::x86::r8, 1));                                             // EntryCount
+        JIT(a.mov(asmjit::x86::r9, 1));                                             // MaximumEntryCount
+        JIT(a.mov(asmjit::x86::rax, m_impl->Mem.address(m_impl->RemoteRuntimeFunc.EndAddress)));
+        JIT(a.push(asmjit::x86::rax));                                              // RangeEnd
+        JIT(a.mov(asmjit::x86::rax, m_impl->Mem.address(m_impl->RemoteRuntimeFunc.BeginAddress)));
+        JIT(a.push(asmjit::x86::rax));                                              // RangeBase
+
         JIT(a.sub(asmjit::x86::rsp, 0x20));
-        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
-        JIT(a.mov(asmjit::x86::rdx, 1));                                          // EntryCount
-        JIT(a.mov(asmjit::x86::r8, m_impl->Mem.address()));                       // BaseAddress
-        JIT(a.mov(asmjit::x86::rax, m_impl->RtlAddFunctionTableAddr));
-        JIT(a.call(asmjit::x86::rax)); // RtlAddFunctionTable
-        JIT(a.add(asmjit::x86::rsp, 0x20));
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlAddGrowableFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlAddGrowableFunctionTable
+        JIT(a.add(asmjit::x86::rsp, 0x30));
 
         //
         // NtQueryObject args, Windows fastcall64 
@@ -366,15 +389,12 @@ namespace hndl
         JIT(a.push(asmjit::x86::rax)); //qword ptr[rsp + 20h], 5
 
         //
-        // Stack alignment: allocate according to the WIN fastcall64
-        //
-        JIT(a.sub(asmjit::x86::rsp, 0x20));
-
-        //
         // Call NtQueryObject function by dirrect address
         //
+        JIT(a.sub(asmjit::x86::rsp, 0x20));
         JIT(a.mov(asmjit::x86::rax, m_impl->NtQueryObjectAddr));
         JIT(a.call(asmjit::x86::rax));
+        JIT(a.add(asmjit::x86::rsp, 0x28));
 
         //
         // Save the ret status to a known memory
@@ -383,17 +403,13 @@ namespace hndl
         JIT(a.mov(asmjit::x86::dword_ptr(asmjit::x86::rcx), asmjit::x86::rax));
 
         //
-        // Stack alignment: cleanup
-        //
-        JIT(a.add(asmjit::x86::rsp, 0x28));
-
-        //
         // Remove exception handler
         //
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataDynamicTable))));
+        JIT(a.mov(asmjit::x86::rcx, asmjit::x86::qword_ptr(asmjit::x86::rcx))); // DynamicTable
         JIT(a.sub(asmjit::x86::rsp, 0x20));
-        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
-        JIT(a.mov(asmjit::x86::rax, m_impl->RtlDeleteFunctionTableAddr));
-        JIT(a.call(asmjit::x86::rax)); // RtlDeleteFunctionTable
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlDeleteGrowableFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlDeleteGrowableFunctionTable
         JIT(a.add(asmjit::x86::rsp, 0x20));
 
         //
@@ -481,17 +497,30 @@ namespace hndl
         JIT(a.call(funcSwitchTo64));
 
         //
+        // Align RSP to 8 bytes
+        //
+        JIT(a.mov(asmjit::x86::rax, m_impl->Mem.address(OFFS(DataRsp))));
+        JIT(a.mov(asmjit::x86::qword_ptr(asmjit::x86::rax), asmjit::x86::rsp));
+        
+        JIT(a.add(asmjit::x86::rsp, 8));
+        JIT(a.and_(asmjit::x86::rsp, ~7));
+
+        //
         // x64 code, run the function and switch it back
         //
-        // Add exception handler
-        //
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataDynamicTable))));  // DynamicTable
+        JIT(a.mov(asmjit::x86::rdx, m_impl->Mem.address(OFFS(DataRuntimeFunc))));   // FunctionTable
+        JIT(a.mov(asmjit::x86::r8, 1));                                             // EntryCount
+        JIT(a.mov(asmjit::x86::r9, 1));                                             // MaximumEntryCount
+        JIT(a.mov(asmjit::x86::rax, m_impl->Mem.address(m_impl->RemoteRuntimeFunc.EndAddress)));
+        JIT(a.push(asmjit::x86::rax));                                              // RangeEnd
+        JIT(a.mov(asmjit::x86::rax, m_impl->Mem.address(m_impl->RemoteRuntimeFunc.BeginAddress)));
+        JIT(a.push(asmjit::x86::rax));                                              // RangeBase
+        
         JIT(a.sub(asmjit::x86::rsp, 0x20));
-        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
-        JIT(a.mov(asmjit::x86::rdx, 1));                                          // EntryCount
-        JIT(a.mov(asmjit::x86::r8, m_impl->Mem.address()));                       // BaseAddress
-        JIT(a.mov(asmjit::x86::rax, m_impl->RtlAddFunctionTableAddr));
-        JIT(a.call(asmjit::x86::rax)); // RtlAddFunctionTable
-        JIT(a.add(asmjit::x86::rsp, 0x20));
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlAddGrowableFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlAddGrowableFunctionTable
+        JIT(a.add(asmjit::x86::rsp, 0x30));
 
         //
         // NtQueryObject args, Windows fastcall64 
@@ -504,15 +533,12 @@ namespace hndl
         JIT(a.push(asmjit::x86::rax)); //qword ptr[rsp + 20h], 5
 
         //
-        // Stack alignment: allocate according to the WIN fastcall64
-        //
-        JIT(a.sub(asmjit::x86::rsp, 0x20));
-
-        //
         // Call NtQueryObject function by dirrect address
         //
+        JIT(a.sub(asmjit::x86::rsp, 0x20));
         JIT(a.mov(asmjit::x86::rax, m_impl->NtQueryObjectAddr));
         JIT(a.call(asmjit::x86::rax));
+        JIT(a.add(asmjit::x86::rsp, 0x28));
 
         //
         // Save the ret status to a known memory
@@ -521,18 +547,20 @@ namespace hndl
         JIT(a.mov(asmjit::x86::dword_ptr(asmjit::x86::rcx), asmjit::x86::rax));
 
         //
-        // Stack alignment: cleanup
-        //
-        JIT(a.add(asmjit::x86::rsp, 0x28));
-
-        //
         // Remove exception handler
         //
+        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataDynamicTable))));
+        JIT(a.mov(asmjit::x86::rcx, asmjit::x86::qword_ptr(asmjit::x86::rcx))); // DynamicTable
         JIT(a.sub(asmjit::x86::rsp, 0x20));
-        JIT(a.mov(asmjit::x86::rcx, m_impl->Mem.address(OFFS(DataRuntimeFunc)))); // FunctionTable
-        JIT(a.mov(asmjit::x86::rax, m_impl->RtlDeleteFunctionTableAddr));
-        JIT(a.call(asmjit::x86::rax)); // RtlDeleteFunctionTable
+        JIT(a.mov(asmjit::x86::rax, m_impl->RtlDeleteGrowableFunctionTableAddr));
+        JIT(a.call(asmjit::x86::rax)); // RtlDeleteGrowableFunctionTable
         JIT(a.add(asmjit::x86::rsp, 0x20));
+
+        //
+        // Restore aligned RSP
+        //
+        JIT(a.mov(asmjit::x86::rax, m_impl->Mem.address(OFFS(DataRsp))));
+        JIT(a.mov(asmjit::x86::rsp, asmjit::x86::qword_ptr(asmjit::x86::rax)));
 
         //
         // x64bit switch back to x86
