@@ -218,7 +218,8 @@ namespace hndl
 
                 }, std::move(handleInfo), handle);
                 
-                tasks.insert(tasks.end(), std::move(task));
+                //tasks.insert(tasks.end(), std::move(task));
+                task.wait();
             }
             else
             {
