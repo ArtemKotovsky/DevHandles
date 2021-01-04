@@ -1,6 +1,7 @@
 #include "SystemUtils.hpp"
 #include "ScopedHandle.hpp"
 #include "Exceptions.hpp"
+#include "Ntdll.h"
 
 #include <Psapi.h>
 #include <filesystem>
@@ -64,5 +65,24 @@ namespace utils
         THROW_WIN_IF2(!FileTimeToSystemTime(&ftLocalTime, &localTime));
 
         return localTime;
+    }
+
+    bool IsProcessSuspended(HANDLE processHandle)
+    {
+        PROCESS_EXTENDED_BASIC_INFORMATION pebi{};
+        ULONG returnedLength = 0;
+        NTSTATUS status = NtQueryInformationProcess(processHandle, ProcessBasicInformation, &pebi, sizeof(pebi), &returnedLength);
+
+        if (NT_ERROR(status))
+        {
+            return false;
+        }
+
+        if (returnedLength != sizeof(pebi))
+        {
+            return false;
+        }
+
+        return !!pebi.u.s.IsFrozen;
     }
 }

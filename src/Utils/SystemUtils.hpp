@@ -11,4 +11,6 @@ namespace utils
     std::wstring GetTime(const wchar_t* format);
 
     SYSTEMTIME SystemFileTimeToLocalTime(uint64_t systemFileTime);
+
+    bool IsProcessSuspended(HANDLE processHandle);
 }

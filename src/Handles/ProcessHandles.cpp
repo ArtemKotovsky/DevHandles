@@ -144,6 +144,10 @@ namespace hndl
                 {
                     LOG_WIN_ERROR("Cannot open process " << handle.UniqueProcessId);
                 }
+                else if (utils::IsProcessSuspended(process))
+                {
+                    LOG_WIN_ERROR("Process " << GetProcessName(process) << " (" << handle.UniqueProcessId << ") is suspended");
+                }
                 else
                 {
                     std::wstring processName = GetProcessName(process);
