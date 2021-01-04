@@ -142,11 +142,11 @@ namespace hndl
 
                 if (!process)
                 {
-                    LOG_WIN_ERROR("Cannot open process " << handle.UniqueProcessId);
+                    LOG_WIN_ERROR("Cannot open process " << std::dec << handle.UniqueProcessId);
                 }
                 else if (utils::IsProcessSuspended(process))
                 {
-                    LOG_WIN_ERROR("Process " << GetProcessName(process) << " (" << handle.UniqueProcessId << ") is suspended");
+                    LOG_WIN_ERROR("Process " << GetProcessName(process) << " (" << std::dec << handle.UniqueProcessId << ") is suspended");
                 }
                 else
                 {
@@ -203,8 +203,8 @@ namespace hndl
 
                     if (!remoteHandle.AttachToProcess(handleInfo.OwnerProcessId))
                     {
-                        LOG_WIN_ERROR("Cannot open process " << handleInfo.OwnerProcessId);
-                        LOG_WIN_ERROR("Cannot duplicate process " << handleInfo.OwnerProcessId << " handle");
+                        LOG_WIN_ERROR("Cannot open process " << std::dec << handleInfo.OwnerProcessId);
+                        LOG_WIN_ERROR("Cannot duplicate process " << std::dec << handleInfo.OwnerProcessId << " handle");
                         return;
                     }
 
